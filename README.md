@@ -19,6 +19,8 @@
 *Unknown Issue*
 - For unknown reason, the gradle doesn't pick up the changes under static/code.js. Disabling the file cache on the handler doesn't seem to solve the problem so I moved all the js code under the html.
 
+
+
 One of our developers built a simple service poller.
 The service consists of a backend service written in Vert.x (https://vertx.io/) that keeps a list of services (defined by a URL), and periodically does a HTTP GET to each and saves the response ("OK" or "FAIL").
 
