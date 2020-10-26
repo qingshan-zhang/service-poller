@@ -20,7 +20,7 @@ sourceCompatibility = '1.8'
 mainClassName = 'io.vertx.core.Launcher'
 
 def mainVerticleName = 'se.kry.codetest.MainVerticle'
-def watchForChange = 'src/**/*'
+def watchForChange = 'src/**/*, webroot/**/*'
 def doOnChange = './gradlew classes'
 
 dependencies {
@@ -58,6 +58,6 @@ run {
   args = ['run', mainVerticleName, "--redeploy=$watchForChange", "--launcher-class=$mainClassName", "--on-redeploy=$doOnChange"]
 }
 
-task wrapper(type: Wrapper) {
-  gradleVersion = '4.6'
-}
+//task wrapper(type: Wrapper) {
+//  gradleVersion = '4.6'
+//}

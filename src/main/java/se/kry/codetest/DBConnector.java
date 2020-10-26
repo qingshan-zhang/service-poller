@@ -47,5 +47,23 @@ public class DBConnector {
     return queryResultFuture;
   }
 
+  public Future<Void> update(String update, JsonArray params) {
+    if(update == null || update.isEmpty()) {
+      return Future.failedFuture("Query is null or empty");
+    }
+    if(!update.endsWith(";")) {
+      update = update + ";";
+    }
+    Future<Void> updateResultFuture = Future.future();
+    client.updateWithParams(update, params, result -> {
+      if (result.failed()) {
+        updateResultFuture.fail(result.cause());
+      } else {
+        updateResultFuture.complete();
+      }
+    });
+    return updateResultFuture;
+  }
+
 
 }
