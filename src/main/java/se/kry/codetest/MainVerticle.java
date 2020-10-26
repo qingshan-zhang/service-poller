@@ -144,7 +144,7 @@ public class MainVerticle extends AbstractVerticle {
     }
 
     private Future<Void> upsertUrlRecord(String url, String name, String user) {
-        String updateSql = "insert into service (url, name, user) values (?,?,?);";
+        String updateSql = "insert into service (url, name, user, timestamp) values (?,?,?, datetime('now'));";
         return connector.update(updateSql, new JsonArray().add(url).add(name).add(user));
     }
 
