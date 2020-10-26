@@ -6,6 +6,7 @@
    - url: url
    - name: hostName
    - user: cookie value of the add request
+   - timestamp: time when the servie is added
 - Added delete for individual service
 - Send get request to each service for health check, and timeout for slow service
 - Refresh the page at a fixed intervals to update the services status
