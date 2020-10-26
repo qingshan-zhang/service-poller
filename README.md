@@ -2,13 +2,15 @@
 
 *Qingshan's progress*
 
-- Stored added services into the database with its host as the name of the serivce.
+- Stored added services into the database with columns:
+   - url: url
+   - name: hostName
+   - user: cookie value of the add request
 - Added delete for individual service
 - Send get request to each service for health check, and timeout for slow service
-- Refresh the page at a fixed intervals to get the services status
+- Refresh the page at a fixed intervals to update the services status
 - Validate service input and return 400 for invalid url
 - Store and show added service for each user identified by cookie 
-
 
 *TODOs*
 - Add update on both frontend and backend
@@ -18,8 +20,6 @@
 
 *Unknown Issue*
 - For unknown reason, the gradle doesn't pick up the changes under static/code.js. Disabling the file cache on the handler doesn't seem to solve the problem so I moved all the js code under the html.
-
-
 
 One of our developers built a simple service poller.
 The service consists of a backend service written in Vert.x (https://vertx.io/) that keeps a list of services (defined by a URL), and periodically does a HTTP GET to each and saves the response ("OK" or "FAIL").
