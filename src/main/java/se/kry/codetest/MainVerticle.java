@@ -1,12 +1,14 @@
 package se.kry.codetest;
 
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.ext.sql.ResultSet;
 import io.vertx.ext.web.Cookie;
 import io.vertx.ext.web.Router;
+import io.vertx.ext.web.RoutingContext;
 import io.vertx.ext.web.handler.BodyHandler;
 import io.vertx.ext.web.handler.CookieHandler;
 import io.vertx.ext.web.handler.StaticHandler;
@@ -22,6 +24,7 @@ public class MainVerticle extends AbstractVerticle {
     private HashMap<String, List<ServiceStatus>> userServices = new HashMap<>();
     private DBConnector connector;
     private BackgroundPoller poller = new BackgroundPoller();
+    private static final String cookieName = "kry";
 
     @Override
     public void start(Future<Void> startFuture) {
@@ -49,109 +52,127 @@ public class MainVerticle extends AbstractVerticle {
                 .handler(CookieHandler.create());
 
         router.get("/service").handler(req -> {
-            Cookie cookie = req.getCookie("kry");
-            String user = getUserOrDefault(cookie);
-
-            List<ServiceStatus> servicesStatus = userServices.get(user);
-            if (servicesStatus == null || servicesStatus.isEmpty()) {
-                connector.query("select url, name from service where user = ?", new JsonArray().add(user))
-                        .setHandler(
-                                response -> {
-                                    if (response.succeeded()) {
-                                        ResultSet resultSet = response.result();
-                                        List<JsonObject> rows = resultSet.getRows();
-                                        List<ServiceStatus> services = rows.stream().map(row -> new ServiceStatus(row.getString("url"), row.getString("name"))).collect(Collectors.toList());
-                                        userServices.put(user, services);
-                                        List<JsonObject> status = getServicesStatus(userServices.get(user));
-                                        req.response()
-                                                .putHeader("content-type", "application/json")
-                                                .end(new JsonArray(status).encode());
-                                    } else {
-                                        req.fail(500);
-                                    }
-                                }
-                        );
-            } else {
-                List<JsonObject> jsonServices = getServicesStatus(servicesStatus);
-                req.response()
-                        .putHeader("content-type", "application/json")
-                        .end(new JsonArray(jsonServices).encode());
-            }
+            handleGetRequest(req);
         });
 
         router.post("/service").handler(req -> {
-            JsonObject jsonBody = req.getBodyAsJson();
-            String url = jsonBody.getString("url");
-            String name = jsonBody.getString("name");
-            Cookie cookie = req.getCookie("kry");
-            String user = getUserOrDefault(cookie);
-
-            try {
-                URL wrappedUrl = new URL(url);
-
-                List<ServiceStatus> services = userServices.get(user);
-                if (services == null || services.isEmpty()) {
-                    services = new ArrayList<>();
-                }
-                services.add(new ServiceStatus(url, name));
-                userServices.put(user, services);
-                upsertUrlRecord(url, name, user).setHandler(result -> {
-                    if (result.succeeded()) {
-                        req.response()
-                                .putHeader("content-type", "text/plain")
-                                .end("OK");
-                    } else {
-                        req.fail(500);
-                    }
-                });
-            } catch (MalformedURLException e) {
-                req.fail(400);
-            }
+            handlePostRequest(req);
         });
 
         router.put("/service").handler(req-> {
-           JsonObject jsonBody = req.getBodyAsJson();
-           String originalName = jsonBody.getString("original_name");
-           String updatedName = jsonBody.getString("updated_name");
-           String originalUrl = jsonBody.getString("original_url");
-           String updatedUrl = jsonBody.getString("updated_url");
-           Cookie cookie = req.getCookie("kry");
-           String user = getUserOrDefault(cookie);
-           List<ServiceStatus> serviceStatuses = userServices.get(user);
-            ServiceStatus serviceStatus = serviceStatuses.stream()
-                    .filter(service -> service.getUrl().equals(originalUrl)
-                            && service.getName().equals(originalName))
-                    .findFirst()
-                    .get();
-            serviceStatus.setName(updatedName);
-            serviceStatus.setUrl(updatedUrl);
-            updateUrlRecord(originalName, originalUrl, updatedName, updatedUrl, user);
+            handlePutRequest(req);
         });
 
-
         router.delete("/service").handler(req -> {
-            JsonObject jsonBody = req.getBodyAsJson();
-            String url = jsonBody.getString("url");
-            Cookie cookie = req.getCookie("kry");
-            String user = getUserOrDefault(cookie);
-            List<ServiceStatus> serviceStatuses = userServices.get(user);
-            ServiceStatus toDelete = serviceStatuses.stream()
-                    .filter(service -> service.getUrl().equals(url))
-                    .findFirst().get();
-            serviceStatuses.remove(toDelete);
-            deleteUrlRecord(url, user).setHandler(result -> {
-                if (result.succeeded()) {
-                    req.response()
-                            .putHeader("content-type", "text/plain")
-                            .end("OK");
-                } else {
-                    req.fail(500);
-                }
-            });
+            handleDeleteRequest(req);
         });
     }
 
-    private String getUserOrDefault(Cookie cookie) {
+    private void handleDeleteRequest(RoutingContext req) {
+        JsonObject jsonBody = req.getBodyAsJson();
+        String url = jsonBody.getString("url");
+        String name = jsonBody.getString("name");
+
+        String user = getUserOrDefault(req);
+        List<ServiceStatus> serviceStatuses = userServices.get(user);
+        ServiceStatus toDelete = findMatchingService(url, name, serviceStatuses);
+        serviceStatuses.remove(toDelete);
+        deleteUrlRecord(url, name, user).setHandler(result -> {
+            handleResult(req, result);
+        });
+    }
+
+    private void handlePutRequest(RoutingContext req) {
+        String user = getUserOrDefault(req);
+
+        JsonObject jsonBody = req.getBodyAsJson();
+        String originalName = jsonBody.getString("original_name");
+        String updatedName = jsonBody.getString("updated_name");
+        String originalUrl = jsonBody.getString("original_url");
+        String updatedUrl = jsonBody.getString("updated_url");
+
+        List<ServiceStatus> serviceStatuses = userServices.get(user);
+        ServiceStatus serviceStatus = findMatchingService(originalUrl, originalName, serviceStatuses);
+        serviceStatus.setName(updatedName);
+        serviceStatus.setUrl(updatedUrl);
+        updateUrlRecord(originalName, originalUrl, updatedName, updatedUrl, user).setHandler(result -> {
+            handleResult(req, result);
+        });
+    }
+
+    private void handlePostRequest(RoutingContext req) {
+        String user = getUserOrDefault(req);
+
+        JsonObject jsonBody = req.getBodyAsJson();
+        String url = jsonBody.getString("url");
+        String name = jsonBody.getString("name");
+
+        try {
+            new URL(url);
+
+            List<ServiceStatus> services = userServices.get(user);
+            if (services == null || services.isEmpty()) {
+                services = new ArrayList<>();
+            }
+            services.add(new ServiceStatus(url, name));
+            userServices.put(user, services);
+            upsertUrlRecord(url, name, user).setHandler(result -> {
+                handleResult(req, result);
+            });
+        } catch (MalformedURLException e) {
+            req.fail(400);
+        }
+    }
+
+    private void handleGetRequest(RoutingContext req) {
+        String user = getUserOrDefault(req);
+        List<ServiceStatus> servicesStatus = userServices.get(user);
+
+        if (servicesStatus == null || servicesStatus.isEmpty()) {
+            connector.query("select url, name from service where user = ?", new JsonArray().add(user))
+                    .setHandler(
+                            response -> {
+                                if (response.succeeded()) {
+                                    ResultSet resultSet = response.result();
+                                    List<JsonObject> rows = resultSet.getRows();
+                                    List<ServiceStatus> services = rows.stream().map(row -> new ServiceStatus(row.getString("url"), row.getString("name"))).collect(Collectors.toList());
+                                    userServices.put(user, services);
+                                    List<JsonObject> status = getServicesStatus(userServices.get(user));
+                                    req.response()
+                                            .putHeader("content-type", "application/json")
+                                            .end(new JsonArray(status).encode());
+                                } else {
+                                    req.fail(500);
+                                }
+                            }
+                    );
+        } else {
+            List<JsonObject> jsonServices = getServicesStatus(servicesStatus);
+            req.response()
+                    .putHeader("content-type", "application/json")
+                    .end(new JsonArray(jsonServices).encode());
+        }
+    }
+
+    private void handleResult(RoutingContext req, AsyncResult<Void> result) {
+        if (result.succeeded()) {
+            req.response()
+                    .putHeader("content-type", "text/plain")
+                    .end("OK");
+        } else {
+            req.fail(500);
+        }
+    }
+
+    private ServiceStatus findMatchingService(String url, String name, List<ServiceStatus> serviceStatuses) {
+        return serviceStatuses.stream()
+                .filter(service -> service.getUrl().equals(url) && service.getName().equals(name))
+                .findFirst()
+                .get();
+    }
+
+    private String getUserOrDefault(RoutingContext req) {
+        Cookie cookie = req.getCookie(cookieName);
         return cookie == null ? "" : cookie.getValue();
     }
 
@@ -170,9 +191,9 @@ public class MainVerticle extends AbstractVerticle {
         return connector.update(updateSql, new JsonArray().add(url).add(name).add(user));
     }
 
-    private Future<Void> deleteUrlRecord(String url, String user) {
-        String deleteSql = "delete from service where url = ? and user = ?;";
-        return connector.update(deleteSql, new JsonArray().add(url).add(user));
+    private Future<Void> deleteUrlRecord(String url, String name, String user) {
+        String deleteSql = "delete from service where url = ? and name = ? and user = ?;";
+        return connector.update(deleteSql, new JsonArray().add(url).add(name).add(user));
     }
 
     private Future<Void> updateUrlRecord(String originalName, String originalUrl, String updatedName, String updatedUrl, String user) {
