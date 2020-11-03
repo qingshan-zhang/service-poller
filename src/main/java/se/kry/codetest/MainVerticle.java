@@ -54,13 +54,13 @@ public class MainVerticle extends AbstractVerticle {
 
             List<ServiceStatus> servicesStatus = userServices.get(user);
             if (servicesStatus == null || servicesStatus.isEmpty()) {
-                connector.query("select url from service where user = ?", new JsonArray().add(user))
+                connector.query("select url, name from service where user = ?", new JsonArray().add(user))
                         .setHandler(
                                 response -> {
                                     if (response.succeeded()) {
                                         ResultSet resultSet = response.result();
                                         List<JsonObject> rows = resultSet.getRows();
-                                        List<ServiceStatus> services = rows.stream().map(row -> new ServiceStatus(row.getString("url"))).collect(Collectors.toList());
+                                        List<ServiceStatus> services = rows.stream().map(row -> new ServiceStatus(row.getString("url"), row.getString("name"))).collect(Collectors.toList());
                                         userServices.put(user, services);
                                         List<JsonObject> status = getServicesStatus(userServices.get(user));
                                         req.response()
@@ -82,6 +82,7 @@ public class MainVerticle extends AbstractVerticle {
         router.post("/service").handler(req -> {
             JsonObject jsonBody = req.getBodyAsJson();
             String url = jsonBody.getString("url");
+            String name = jsonBody.getString("name");
             Cookie cookie = req.getCookie("kry");
             String user = getUserOrDefault(cookie);
 
@@ -92,9 +93,9 @@ public class MainVerticle extends AbstractVerticle {
                 if (services == null || services.isEmpty()) {
                     services = new ArrayList<>();
                 }
-                services.add(new ServiceStatus(url));
+                services.add(new ServiceStatus(url, name));
                 userServices.put(user, services);
-                upsertUrlRecord(url, wrappedUrl.getHost(), user).setHandler(result -> {
+                upsertUrlRecord(url, name, user).setHandler(result -> {
                     if (result.succeeded()) {
                         req.response()
                                 .putHeader("content-type", "text/plain")
@@ -107,6 +108,26 @@ public class MainVerticle extends AbstractVerticle {
                 req.fail(400);
             }
         });
+
+        router.put("/service").handler(req-> {
+           JsonObject jsonBody = req.getBodyAsJson();
+           String originalName = jsonBody.getString("original_name");
+           String updatedName = jsonBody.getString("updated_name");
+           String originalUrl = jsonBody.getString("original_url");
+           String updatedUrl = jsonBody.getString("updated_url");
+           Cookie cookie = req.getCookie("kry");
+           String user = getUserOrDefault(cookie);
+           List<ServiceStatus> serviceStatuses = userServices.get(user);
+            ServiceStatus serviceStatus = serviceStatuses.stream()
+                    .filter(service -> service.getUrl().equals(originalUrl)
+                            && service.getName().equals(originalName))
+                    .findFirst()
+                    .get();
+            serviceStatus.setName(updatedName);
+            serviceStatus.setUrl(updatedUrl);
+            updateUrlRecord(originalName, originalUrl, updatedName, updatedUrl, user);
+        });
+
 
         router.delete("/service").handler(req -> {
             JsonObject jsonBody = req.getBodyAsJson();
@@ -138,7 +159,8 @@ public class MainVerticle extends AbstractVerticle {
         return services
                 .stream()
                 .map(service -> new JsonObject()
-                        .put("name", service.getUrl())
+                        .put("url", service.getUrl())
+                        .put("name", service.getName())
                         .put("status", service.getStatus()))
                 .collect(Collectors.toList());
     }
@@ -151,6 +173,11 @@ public class MainVerticle extends AbstractVerticle {
     private Future<Void> deleteUrlRecord(String url, String user) {
         String deleteSql = "delete from service where url = ? and user = ?;";
         return connector.update(deleteSql, new JsonArray().add(url).add(user));
+    }
+
+    private Future<Void> updateUrlRecord(String originalName, String originalUrl, String updatedName, String updatedUrl, String user) {
+        String updateSql = "update service set url = ?, name = ? where name = ? and url = ? and user = ?";
+        return connector.update(updateSql, new JsonArray().add(updatedUrl).add(updatedName).add(originalName).add(originalUrl).add(user));
     }
 
 }

@@ -8,71 +8,139 @@
 KRY status poller
 <ul id="service-list">
 </ul>
-<input type="text" id="url-name">
+<div>
+    <div> url:
+        <input type="text" id="url">
+    </div>
+    <div> name:
+        <input type="text" id="name">
+    </div>
+
+</div>
+
 <button id="post-service">Save</button>
 
 </body>
 <script>
     setInterval(() => {
         location.reload();
-    }, 10000);
+    }, 20000);
 
     const listContainer = document.querySelector('#service-list');
-    if (getCookie("kry") === "") {
-        let cookieValue = Math.random().toString(36).substring(7);
-        document.cookie = "kry= " + cookieValue + "; expires=Thu, 18 Dec 2020 12:00:00 UTC; path=/";
-    }
+    const cookie = getOrSetDefaultCookie("kry");
+
     let servicesRequest = new Request('/service');
     fetch(servicesRequest, {
         method: 'get',
         headers: {
-            'Cookie': getCookie("kry")
+            'Cookie': cookie
         }
     })
         .then(function(response) {return response.json();})
         .then(function(serviceList) {
             serviceList.forEach(service => {
-                let li = document.createElement("li");
-                let button = document.createElement("button");
-                button.innerText = "delete";
-                button.addEventListener("click", () => {
-                    listContainer.removeChild(li);
-                    sendDelete(service.name)
-                });
-                li.appendChild(document.createTextNode(service.name + ': ' + service.status));
-                li.appendChild(button);
+                let li = createServiceNode(service);
                 listContainer.appendChild(li);
             });
         });
 
     const saveButton = document.querySelector('#post-service');
     saveButton.onclick = evt => {
-        let urlName = document.querySelector('#url-name').value;
+        let url = document.querySelector('#url').value;
+        let name = document.querySelector('#name').value;
         fetch('/service', {
             method: 'post',
             headers: {
                 'Accept': 'application/json, text/plain, */*',
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Cookie': cookie
             },
-            body: JSON.stringify({url:urlName})
+            body: JSON.stringify({url:url, name: name})
         }).then(res=> {
             //TODO: handle 400 bad request and alert bad url format
             location.reload();
         });
     }
 
-    function sendDelete(sname) {
+    function sendUpdate(originalName, originalUrl, updatedName, updatedUrl) {
+        fetch('/service', {
+            method: 'put',
+            headers: {
+                'Accept': 'application/json, text/plain, */*',
+                'Content-Type': 'application/json',
+                'Cookie': cookie
+            },
+            body: JSON.stringify({
+                original_name: originalName,
+                updated_name: updatedName,
+                original_url: originalUrl,
+                updated_url: updatedUrl
+            })
+        }).then(res => {
+            location.reload();
+        })
+    }
+
+    function sendDelete(sname, surl) {
         fetch('/service', {
             method: 'delete',
             headers: {
                 'Accept': 'application/json, text/plain, */*',
                 'Content-Type': 'application/json',
-                'Cookie': getCookie("kry")
+                'Cookie': cookie
             },
-            body: JSON.stringify({url:sname})
+            body: JSON.stringify({name: sname, url:surl})
         }).then(res => {
             location.reload();
         })
+    }
+
+    function createServiceNode(service) {
+        let li = document.createElement("li");
+        let urlInput = createInputNode(service.url)
+        let nameInput = createInputNode(service.name)
+        li.appendChild(urlInput);
+        li.appendChild(nameInput);
+        li.appendChild(document.createTextNode(': ' + service.status));
+        let updateButton = createUpdateButton(service, urlInput, nameInput);
+        let deleteButton = createDeleteButton(li, service);
+        li.appendChild(updateButton);
+        li.appendChild(deleteButton);
+        return li;
+    }
+
+    function createUpdateButton(service, urlInput, nameInput) {
+        let updateButton = document.createElement("button");
+        updateButton.innerText = "update";
+        updateButton.addEventListener("click", () => {
+            sendUpdate(service.name, service.url, nameInput.value, urlInput.value);
+        })
+        return updateButton;
+    }
+
+    function createDeleteButton(li, service) {
+        let deleteButton = document.createElement("button");
+        deleteButton.innerText = "delete";
+        deleteButton.addEventListener("click", () => {
+            listContainer.removeChild(li);
+            sendDelete(service.name, service.url)
+        });
+        return deleteButton;
+    }
+
+    function createInputNode(value) {
+        let input = document.createElement("input");
+        input.setAttribute('type', 'text');
+        input.setAttribute('value', value);
+        return input;
+    }
+
+    function getOrSetDefaultCookie(cname) {
+        if (getCookie(cname) === "") {
+            let cookieValue = Math.random().toString(36).substring(7);
+            document.cookie = cname + "= " + cookieValue + "; expires=Thu, 18 Dec 2020 12:00:00 UTC; path=/";
+        }
+        return getCookie(cname);
     }
 
     function getCookie(cname) {
