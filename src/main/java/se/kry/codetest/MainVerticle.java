@@ -76,10 +76,14 @@ public class MainVerticle extends AbstractVerticle {
         String user = getUserOrDefault(req);
         List<ServiceStatus> serviceStatuses = userServices.get(user);
         ServiceStatus toDelete = findMatchingService(url, name, serviceStatuses);
-        serviceStatuses.remove(toDelete);
-        deleteUrlRecord(url, name, user).setHandler(result -> {
-            handleResult(req, result);
-        });
+        if (toDelete == null) {
+            req.fail(400);
+        } else {
+            serviceStatuses.remove(toDelete);
+            deleteUrlRecord(url, name, user).setHandler(result -> {
+                handleResult(req, result);
+            });
+        }
     }
 
     private void handlePutRequest(RoutingContext req) {
@@ -90,14 +94,17 @@ public class MainVerticle extends AbstractVerticle {
         String updatedName = jsonBody.getString("updated_name");
         String originalUrl = jsonBody.getString("original_url");
         String updatedUrl = jsonBody.getString("updated_url");
-
-        List<ServiceStatus> serviceStatuses = userServices.get(user);
-        ServiceStatus serviceStatus = findMatchingService(originalUrl, originalName, serviceStatuses);
-        serviceStatus.setName(updatedName);
-        serviceStatus.setUrl(updatedUrl);
-        updateUrlRecord(originalName, originalUrl, updatedName, updatedUrl, user).setHandler(result -> {
-            handleResult(req, result);
-        });
+        if (!isUrlValid(updatedUrl)) {
+            req.fail(400);
+        } else {
+            List<ServiceStatus> serviceStatuses = userServices.get(user);
+            ServiceStatus serviceStatus = findMatchingService(originalUrl, originalName, serviceStatuses);
+            serviceStatus.setName(updatedName);
+            serviceStatus.setUrl(updatedUrl);
+            updateUrlRecord(originalName, originalUrl, updatedName, updatedUrl, user).setHandler(result -> {
+                handleResult(req, result);
+            });
+        }
     }
 
     private void handlePostRequest(RoutingContext req) {
@@ -107,9 +114,9 @@ public class MainVerticle extends AbstractVerticle {
         String url = jsonBody.getString("url");
         String name = jsonBody.getString("name");
 
-        try {
-            new URL(url);
-
+        if (!isUrlValid(url)) {
+            req.fail(400);
+        } else {
             List<ServiceStatus> services = userServices.get(user);
             if (services == null || services.isEmpty()) {
                 services = new ArrayList<>();
@@ -119,8 +126,6 @@ public class MainVerticle extends AbstractVerticle {
             upsertUrlRecord(url, name, user).setHandler(result -> {
                 handleResult(req, result);
             });
-        } catch (MalformedURLException e) {
-            req.fail(400);
         }
     }
 
@@ -164,11 +169,21 @@ public class MainVerticle extends AbstractVerticle {
         }
     }
 
+    private boolean isUrlValid(String url) {
+        try {
+            new URL(url);
+            return true;
+        } catch (MalformedURLException e) {
+            return false;
+        }
+    }
+
     private ServiceStatus findMatchingService(String url, String name, List<ServiceStatus> serviceStatuses) {
         return serviceStatuses.stream()
                 .filter(service -> service.getUrl().equals(url) && service.getName().equals(name))
                 .findFirst()
-                .get();
+                .orElse(null);
+
     }
 
     private String getUserOrDefault(RoutingContext req) {

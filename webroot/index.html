@@ -57,11 +57,7 @@ KRY status poller
             },
             body: JSON.stringify({url:url, name: name})
         }).then(res=> {
-            if (res.status === 400) {
-                window.alert("url is invalid.");
-            } else {
-                handleResponse(res);
-            }
+            handleResponse(res);
         });
     }
 
@@ -99,10 +95,12 @@ KRY status poller
     }
 
     function handleResponse(res) {
-        if (res.status == 200) {
+        if (res.status === 200) {
             location.reload();
+        } else if (res.status === 400) {
+            window.alert("url is invalid.");
         } else {
-            window.alert("Service failed to get updated/saved");
+            window.alert("Service failed to get updated/saved/deleted");
         }
     }
 

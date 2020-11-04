@@ -1,14 +1,7 @@
 package se.kry.codetest.migrate;
 
 import io.vertx.core.Vertx;
-import io.vertx.core.json.JsonArray;
-import io.vertx.core.json.JsonObject;
-import io.vertx.ext.sql.ResultSet;
 import se.kry.codetest.DBConnector;
-
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.util.List;
 
 public class DBMigration {
 
