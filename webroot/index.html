@@ -57,8 +57,11 @@ KRY status poller
             },
             body: JSON.stringify({url:url, name: name})
         }).then(res=> {
-            //TODO: handle 400 bad request and alert bad url format
-            location.reload();
+            if (res.status === 400) {
+                window.alert("url is invalid.");
+            } else {
+                handleResponse(res);
+            }
         });
     }
 
@@ -77,7 +80,7 @@ KRY status poller
                 updated_url: updatedUrl
             })
         }).then(res => {
-            location.reload();
+            handleResponse(res);
         })
     }
 
@@ -91,8 +94,16 @@ KRY status poller
             },
             body: JSON.stringify({name: sname, url:surl})
         }).then(res => {
-            location.reload();
+            handleResponse(res);
         })
+    }
+
+    function handleResponse(res) {
+        if (res.status == 200) {
+            location.reload();
+        } else {
+            window.alert("Service failed to get updated/saved");
+        }
     }
 
     function createServiceNode(service) {
